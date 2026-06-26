@@ -1,4 +1,4 @@
-﻿import json
+import json
 import mimetypes
 from pathlib import Path
 from typing import Any
@@ -69,6 +69,36 @@ class CosenseClient:
         self._raise_for_status(response)
 
         return self.page_url(title)
+
+    def append_or_create_page(self, title: str, body_lines: list[str]) -> str:
+        existing_lines = self.get_page_lines(title)
+        if existing_lines:
+            lines = [*existing_lines, "----------", *body_lines]
+        else:
+            lines = [title, *body_lines]
+
+        return self.import_page(title=title, lines=lines)
+
+    def get_page_lines(self, title: str) -> list[str] | None:
+        response = self.session.get(
+            f"https://scrapbox.io/api/pages/{self.project}/{quote(title, safe='')}",
+            headers=self._same_origin_headers(),
+            timeout=30,
+        )
+        if response.status_code == 404:
+            return None
+        self._raise_for_status(response)
+
+        data = response.json()
+        raw_lines = data.get("lines")
+        if not isinstance(raw_lines, list):
+            return None
+
+        lines: list[str] = []
+        for raw_line in raw_lines:
+            if isinstance(raw_line, dict):
+                lines.append(str(raw_line.get("text") or ""))
+        return lines
 
     def upload_image_to_gyazo(self, image_path: str | Path, title: str) -> str:
         path = Path(image_path)

@@ -2,9 +2,13 @@ from dataclasses import dataclass
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
+import json
 import re
 
 import requests
+
+
+POST_TO_COSENSE_ACTION_ID = "post_to_cosense"
 
 
 @dataclass(frozen=True)
@@ -53,6 +57,123 @@ class SlackClient:
             if isinstance(message, dict)
         ]
 
+    def fetch_message(self, channel_id: str, message_ts: str) -> dict[str, Any]:
+        data = self._slack_get(
+            "conversations.replies",
+            params={
+                "channel": channel_id,
+                "ts": message_ts,
+                "limit": 1,
+                "inclusive": True,
+            },
+        )
+        messages = data.get("messages", [])
+        if not isinstance(messages, list) or not messages:
+            raise RuntimeError("Slack message was not found")
+        message = messages[0]
+        if not isinstance(message, dict):
+            raise RuntimeError("Slack message response was invalid")
+        return message
+
+    def post_review_request(
+        self,
+        channel_id: str,
+        thread_ts: str,
+        title: str,
+        body_lines: list[str],
+        image_count: int,
+    ) -> None:
+        value = json.dumps(
+            {"channel_id": channel_id, "message_ts": thread_ts},
+            ensure_ascii=False,
+        )
+        body_preview = "\n".join(body_lines).strip() or "(no body)"
+        if len(body_preview) > 1800:
+            body_preview = body_preview[:1800] + "..."
+
+        self.post_message(
+            channel_id=channel_id,
+            thread_ts=thread_ts,
+            text=f"Cosense draft: {title}",
+            blocks=[
+                {
+                    "type": "section",
+                    "text": {
+                        "type": "mrkdwn",
+                        "text": (
+                            "*Cosense draft*\n"
+                            f"*Title:* {title}\n"
+                            f"*Body:*\n```{body_preview}```\n"
+                            f"*Attached images:* {image_count}"
+                        ),
+                    },
+                },
+                {
+                    "type": "actions",
+                    "elements": [
+                        {
+                            "type": "button",
+                            "text": {
+                                "type": "plain_text",
+                                "text": "Post to Cosense",
+                            },
+                            "style": "primary",
+                            "action_id": POST_TO_COSENSE_ACTION_ID,
+                            "value": value,
+                        }
+                    ],
+                },
+            ],
+        )
+
+    def post_message(
+        self,
+        channel_id: str,
+        text: str,
+        thread_ts: str | None = None,
+        blocks: list[dict[str, Any]] | None = None,
+    ) -> dict[str, Any]:
+        payload: dict[str, Any] = {
+            "channel": channel_id,
+            "text": text,
+        }
+        if thread_ts:
+            payload["thread_ts"] = thread_ts
+        if blocks:
+            payload["blocks"] = blocks
+        return self._slack_post("chat.postMessage", payload)
+
+    def update_message(
+        self,
+        channel_id: str,
+        message_ts: str,
+        text: str,
+        blocks: list[dict[str, Any]] | None = None,
+    ) -> dict[str, Any]:
+        payload: dict[str, Any] = {
+            "channel": channel_id,
+            "ts": message_ts,
+            "text": text,
+        }
+        if blocks is not None:
+            payload["blocks"] = blocks
+        return self._slack_post("chat.update", payload)
+
+    def download_message_images(
+        self,
+        message: dict[str, Any],
+        download_dir: str | Path,
+    ) -> list[SlackImage]:
+        return self._download_message_images(message, Path(download_dir))
+
+    @staticmethod
+    def count_image_files(message: dict[str, Any]) -> int:
+        return sum(
+            1
+            for file_data in message.get("files", [])
+            if isinstance(file_data, dict) and SlackClient._is_image_file(file_data)
+        )
+
     def _parse_message(
         self,
         message: dict[str, Any],
@@ -82,7 +203,9 @@ class SlackClient:
             file_id = str(file_data.get("id") or "file")
             name = str(file_data.get("name") or f"{file_id}.image")
             mimetype = str(file_data.get("mimetype") or "application/octet-stream")
-            download_url = file_data.get("url_private_download") or file_data.get("url_private")
+            download_url = file_data.get("url_private_download") or file_data.get(
+                "url_private"
+            )
             if not isinstance(download_url, str) or not download_url:
                 continue
 
@@ -113,11 +236,22 @@ class SlackClient:
             timeout=30,
         )
         self._raise_http_error(response)
+        return self._parse_slack_response(method, response)
 
+    def _slack_post(self, method: str, payload: dict[str, Any]) -> dict[str, Any]:
+        response = self.session.post(
+            f"https://slack.com/api/{method}",
+            json=payload,
+            timeout=30,
+        )
+        self._raise_http_error(response)
+        return self._parse_slack_response(method, response)
+
+    @staticmethod
+    def _parse_slack_response(method: str, response: requests.Response) -> dict[str, Any]:
         data = response.json()
         if data.get("ok") is not True:
             raise RuntimeError(f"Slack API error in {method}: {data.get('error')}")
-
         return data
 
     @staticmethod
