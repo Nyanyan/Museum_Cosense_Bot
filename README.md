@@ -1,5 +1,7 @@
 # Museum Cosense Bot
 
+[English](README.md) | [日本語](README.ja.md)
+
 A Python bot that receives new posts from a configured public Slack channel, asks for human approval in the Slack thread, and then posts the approved content to Cosense.
 
 ## Setup
