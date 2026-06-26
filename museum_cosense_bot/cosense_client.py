@@ -89,8 +89,12 @@ class CosenseClient:
 
     def append_or_create_page(self, title: str, body_lines: list[str]) -> str:
         existing_lines = self.get_page_lines(title)
-        if existing_lines:
-            lines = [*existing_lines, "----------", *body_lines]
+        if existing_lines is not None:
+            lines = [
+                *self._ensure_title_line(title, existing_lines),
+                "----------",
+                *body_lines,
+            ]
         else:
             lines = [title, *body_lines]
 

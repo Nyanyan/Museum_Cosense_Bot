@@ -82,48 +82,45 @@ class SlackClient:
         title: str,
         body_lines: list[str],
         image_count: int,
-    ) -> None:
-        value = json.dumps(
-            {"channel_id": channel_id, "message_ts": thread_ts},
-            ensure_ascii=False,
-        )
-        body_preview = "\n".join(body_lines).strip() or "(no body)"
-        if len(body_preview) > 1800:
-            body_preview = body_preview[:1800] + "..."
-
-        self.post_message(
+    ) -> dict[str, Any]:
+        return self.post_message(
             channel_id=channel_id,
             thread_ts=thread_ts,
             text=f"Cosense draft: {title}",
-            blocks=[
-                {
-                    "type": "section",
-                    "text": {
-                        "type": "mrkdwn",
-                        "text": (
-                            "*Cosense draft*\n"
-                            f"*Title:* {title}\n"
-                            f"*Body:*\n```{body_preview}```\n"
-                            f"*Attached images:* {image_count}"
-                        ),
-                    },
-                },
-                {
-                    "type": "actions",
-                    "elements": [
-                        {
-                            "type": "button",
-                            "text": {
-                                "type": "plain_text",
-                                "text": "Post to Cosense",
-                            },
-                            "style": "primary",
-                            "action_id": POST_TO_COSENSE_ACTION_ID,
-                            "value": value,
-                        }
-                    ],
-                },
-            ],
+            blocks=self._review_blocks(
+                channel_id=channel_id,
+                message_ts=thread_ts,
+                title=title,
+                body_lines=body_lines,
+                image_count=image_count,
+                status_text=None,
+                button_enabled=True,
+            ),
+        )
+
+    def update_review_request_status(
+        self,
+        channel_id: str,
+        review_message_ts: str,
+        original_message_ts: str,
+        title: str,
+        body_lines: list[str],
+        image_count: int,
+        status_text: str,
+    ) -> dict[str, Any]:
+        return self.update_message(
+            channel_id=channel_id,
+            message_ts=review_message_ts,
+            text=f"Cosense draft: {title} - {status_text}",
+            blocks=self._review_blocks(
+                channel_id=channel_id,
+                message_ts=original_message_ts,
+                title=title,
+                body_lines=body_lines,
+                image_count=image_count,
+                status_text=status_text,
+                button_enabled=False,
+            ),
         )
 
     def post_message(
@@ -173,6 +170,72 @@ class SlackClient:
             for file_data in message.get("files", [])
             if isinstance(file_data, dict) and SlackClient._is_image_file(file_data)
         )
+
+    def _review_blocks(
+        self,
+        channel_id: str,
+        message_ts: str,
+        title: str,
+        body_lines: list[str],
+        image_count: int,
+        status_text: str | None,
+        button_enabled: bool,
+    ) -> list[dict[str, Any]]:
+        body_preview = "\n".join(body_lines).strip() or "(no body)"
+        if len(body_preview) > 1800:
+            body_preview = body_preview[:1800] + "..."
+
+        blocks: list[dict[str, Any]] = [
+            {
+                "type": "section",
+                "text": {
+                    "type": "mrkdwn",
+                    "text": (
+                        "*Cosense draft*\n"
+                        f"*Title:* {title}\n"
+                        f"*Body:*\n```{body_preview}```\n"
+                        f"*Attached images:* {image_count}"
+                    ),
+                },
+            }
+        ]
+        if status_text:
+            blocks.append(
+                {
+                    "type": "context",
+                    "elements": [
+                        {
+                            "type": "mrkdwn",
+                            "text": f"*Status:* {status_text}",
+                        }
+                    ],
+                }
+            )
+        if button_enabled:
+            blocks.append(
+                {
+                    "type": "actions",
+                    "elements": [
+                        {
+                            "type": "button",
+                            "text": {
+                                "type": "plain_text",
+                                "text": "Post to Cosense",
+                            },
+                            "style": "primary",
+                            "action_id": POST_TO_COSENSE_ACTION_ID,
+                            "value": json.dumps(
+                                {
+                                    "channel_id": channel_id,
+                                    "message_ts": message_ts,
+                                },
+                                ensure_ascii=False,
+                            ),
+                        }
+                    ],
+                }
+            )
+        return blocks
 
     def _parse_message(
         self,

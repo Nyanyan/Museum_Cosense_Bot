@@ -35,6 +35,7 @@ SLACK_CHANNEL_NAME=
 SLACK_CHANNEL_ID=
 SLACK_HISTORY_LIMIT=5
 SLACK_IMAGE_DOWNLOAD_DIR=data/slack-downloads
+SLACK_IMAGE_DOWNLOAD_WORKERS=4
 ```
 
 Cosense auth options:
@@ -89,11 +90,13 @@ Flow:
 2. Use the first line as the Cosense page title.
 3. Use the second and later lines as the body.
 4. Reply in the original Slack thread with a review message and a `Post to Cosense` button.
-5. When the button is clicked, download attached images from Slack and upload them to Gyazo.
-6. Post the content to Cosense.
-7. If a Cosense page with the same title already exists, append `----------` and then append the new content.
+5. Attached images are downloaded from Slack in the background after the review message is posted.
+6. When the button is clicked, the review message is kept but the button is removed and a status line is shown.
+7. Upload downloaded images to Gyazo.
+8. Post the content to Cosense.
+9. If a Cosense page with the same title already exists, keep the existing lines, append `----------`, and then append the new content.
 
-The bot ignores its own posts, thread replies, and posts with an empty first line.
+The bot ignores its own posts, thread replies, and posts with an empty first line. Button clicks are accepted only once per Slack post while the bot process is running.
 
 ## Debugging
 
