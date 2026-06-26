@@ -1,22 +1,27 @@
 import os
+import sys
 from pathlib import Path
 
-from dotenv import load_dotenv
+PROJECT_ROOT = Path(__file__).resolve().parents[2]
+sys.path.insert(0, str(PROJECT_ROOT))
 
-from slack_client import SlackClient, SlackMessage
+from museum_cosense_bot.config import load_environment
+from museum_cosense_bot.slack_client import SlackClient, SlackMessage
 
 
 DEFAULT_HISTORY_LIMIT = 5
 
 
 def main() -> None:
-    load_dotenv()
+    load_environment()
 
     bot_token = os.getenv("SLACK_BOT_TOKEN")
     channel_name = os.getenv("SLACK_CHANNEL_NAME")
     channel_id = os.getenv("SLACK_CHANNEL_ID")
     history_limit = _get_history_limit()
-    download_dir = Path(os.getenv("SLACK_IMAGE_DOWNLOAD_DIR", "slack-downloads"))
+    download_dir = _resolve_download_dir(
+        os.getenv("SLACK_IMAGE_DOWNLOAD_DIR", "data/slack-downloads")
+    )
 
     if not bot_token:
         raise RuntimeError("SLACK_BOT_TOKEN is not set")
@@ -49,6 +54,13 @@ def _get_history_limit() -> int:
         raise RuntimeError("SLACK_HISTORY_LIMIT must be 1 or greater")
 
     return value
+
+
+def _resolve_download_dir(raw_path: str) -> Path:
+    download_dir = Path(raw_path)
+    if download_dir.is_absolute():
+        return download_dir
+    return PROJECT_ROOT / download_dir
 
 
 def _print_message(message: SlackMessage) -> None:

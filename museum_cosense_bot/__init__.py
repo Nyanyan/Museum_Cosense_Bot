@@ -1,0 +1,1 @@
+"""Museum Cosense Bot package."""

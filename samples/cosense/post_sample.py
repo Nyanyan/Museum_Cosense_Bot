@@ -1,16 +1,19 @@
-﻿import os
+import os
+import sys
 from pathlib import Path
 
-from dotenv import load_dotenv
+PROJECT_ROOT = Path(__file__).resolve().parents[2]
+sys.path.insert(0, str(PROJECT_ROOT))
 
-from cosense_client import CosenseClient
+from museum_cosense_bot.config import load_environment
+from museum_cosense_bot.cosense_client import CosenseClient
 
 
 SAMPLE_TITLE = "Slack Cosense Test"
 
 
 def main() -> None:
-    load_dotenv()
+    load_environment()
 
     project = os.getenv("COSENSE_PROJECT")
     connect_sid = os.getenv("COSENSE_CONNECT_SID")

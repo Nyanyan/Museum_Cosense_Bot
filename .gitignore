@@ -1,8 +1,12 @@
 .env
+**/.env
 *.env
+**/*.env
 !.env.example
+!**/.env.example
 
 __pycache__/
+**/__pycache__/
 *.py[cod]
 
 .venv/
@@ -13,5 +17,6 @@ env/
 .mypy_cache/
 .ruff_cache/
 
+data/
 slack-downloads/
-cosense-sample/slack-downloads/
+**/slack-downloads/
