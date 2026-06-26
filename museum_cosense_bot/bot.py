@@ -15,6 +15,7 @@ from museum_cosense_bot.config import (
     project_root,
 )
 from museum_cosense_bot.cosense_client import CosenseAuthError, CosenseClient
+from museum_cosense_bot.cosense_cookie import resolve_cosense_connect_sid
 from museum_cosense_bot.slack_client import POST_TO_COSENSE_ACTION_ID, SlackClient
 from museum_cosense_bot.slack_post import SlackCosensePost
 
@@ -26,6 +27,7 @@ ALLOWED_TOP_LEVEL_SUBTYPES = {None, "file_share"}
 class BotConfig:
     cosense_project: str
     cosense_connect_sid: str
+    cosense_connect_sid_source: str
     slack_bot_token: str
     slack_app_token: str
     slack_channel_id: str
@@ -42,9 +44,12 @@ class BotConfig:
         if not image_download_dir.is_absolute():
             image_download_dir = root / image_download_dir
 
+        cosense_connect_sid = resolve_cosense_connect_sid()
+
         return cls(
             cosense_project=_required_env("COSENSE_PROJECT"),
-            cosense_connect_sid=_required_env("COSENSE_CONNECT_SID"),
+            cosense_connect_sid=cosense_connect_sid.value,
+            cosense_connect_sid_source=cosense_connect_sid.source,
             slack_bot_token=_required_env("SLACK_BOT_TOKEN"),
             slack_app_token=_required_env("SLACK_APP_TOKEN"),
             slack_channel_id=_required_env("SLACK_CHANNEL_ID"),
@@ -260,6 +265,7 @@ def _print_startup_diagnostics(config: BotConfig) -> None:
     for path in [PROJECT_ROOT / ".env", PACKAGE_ENV_PATH, LEGACY_ENV_PATH]:
         print(f"[config] - {path} exists={path.exists()}", flush=True)
     print(f"[config] COSENSE_PROJECT={config.cosense_project}", flush=True)
+    print(f"[config] COSENSE_CONNECT_SID_SOURCE={config.cosense_connect_sid_source}", flush=True)
     print(f"[config] COSENSE_CONNECT_SID={_mask_secret(config.cosense_connect_sid)}", flush=True)
     print(f"[config] SLACK_CHANNEL_NAME={config.slack_channel_name}", flush=True)
     print(f"[config] SLACK_CHANNEL_ID={config.slack_channel_id}", flush=True)

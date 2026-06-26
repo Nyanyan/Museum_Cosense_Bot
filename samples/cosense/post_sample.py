@@ -7,6 +7,7 @@ sys.path.insert(0, str(PROJECT_ROOT))
 
 from museum_cosense_bot.config import load_environment
 from museum_cosense_bot.cosense_client import CosenseClient
+from museum_cosense_bot.cosense_cookie import resolve_cosense_connect_sid
 
 
 SAMPLE_TITLE = "Slack Cosense Test"
@@ -16,14 +17,13 @@ def main() -> None:
     load_environment()
 
     project = os.getenv("COSENSE_PROJECT")
-    connect_sid = os.getenv("COSENSE_CONNECT_SID")
-
     if not project:
         raise RuntimeError("COSENSE_PROJECT is not set")
-    if not connect_sid:
-        raise RuntimeError("COSENSE_CONNECT_SID is not set")
 
-    client = CosenseClient(project=project, connect_sid=connect_sid)
+    connect_sid = resolve_cosense_connect_sid()
+    print(f"COSENSE_CONNECT_SID source: {connect_sid.source}")
+
+    client = CosenseClient(project=project, connect_sid=connect_sid.value)
     sample_image_path = Path(__file__).with_name("sample.jpg")
     image_url = client.upload_image_to_gyazo(
         image_path=sample_image_path,

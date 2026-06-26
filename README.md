@@ -16,14 +16,18 @@ Copy `.env.example` to `.env` and set real values.
 copy .env.example .env
 ```
 
-Do not commit `COSENSE_CONNECT_SID`, `SLACK_BOT_TOKEN`, or `SLACK_APP_TOKEN`.
+Do not commit `.env`, `SLACK_BOT_TOKEN`, `SLACK_APP_TOKEN`, or browser cookie data.
 Keep real Slack channel names and channel IDs only in your local `.env`.
 
 ## .env
 
+Recommended Cosense auth uses the current Firefox login cookie at runtime, so you do not need to keep updating `COSENSE_CONNECT_SID` by hand.
+
 ```env
 COSENSE_PROJECT=your-project-name
-COSENSE_CONNECT_SID=s%3Axxxxxxxxxxxxxxxxxxxxxxxx
+COSENSE_COOKIE_SOURCE=firefox
+COSENSE_FIREFOX_COOKIE_FILE=
+COSENSE_CONNECT_SID=
 
 SLACK_BOT_TOKEN=xoxb-your-slack-bot-token
 SLACK_APP_TOKEN=xapp-your-slack-app-token
@@ -32,6 +36,12 @@ SLACK_CHANNEL_ID=
 SLACK_HISTORY_LIMIT=5
 SLACK_IMAGE_DOWNLOAD_DIR=data/slack-downloads
 ```
+
+Cosense auth options:
+
+- `COSENSE_COOKIE_SOURCE=firefox`: read the latest `connect.sid` from Firefox cookies.
+- `COSENSE_FIREFOX_COOKIE_FILE`: optional path to a specific Firefox `cookies.sqlite` file when multiple profiles are present.
+- `COSENSE_CONNECT_SID`: optional manual fallback. Used when `COSENSE_COOKIE_SOURCE` is blank, `env`, or `connect_sid`.
 
 `.env` files are loaded in this order. Earlier values win when the same key exists in multiple files.
 
@@ -99,13 +109,13 @@ Check whether Slack Socket Mode events arrive:
 python samples/slack/debug_socket_mode.py
 ```
 
-Check whether `COSENSE_CONNECT_SID` is still a valid logged-in Cosense session:
+Check whether Cosense auth works:
 
 ```bash
 python samples/cosense/check_session.py
 ```
 
-If Slack works but Cosense returns `HTTP 401` or `NotLoggedInError`, refresh `COSENSE_CONNECT_SID` from a logged-in browser session on `scrapbox.io`, update `.env`, and restart the bot. The cookie can expire or become invalid after logout.
+If `COSENSE_COOKIE_SOURCE=firefox` cannot find the cookie, make sure Firefox is logged in to `https://scrapbox.io/`. If Firefox has multiple profiles, set `COSENSE_FIREFOX_COOKIE_FILE` to that profile's `cookies.sqlite`.
 
 ## Samples
 

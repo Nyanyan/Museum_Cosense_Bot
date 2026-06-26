@@ -7,17 +7,19 @@ sys.path.insert(0, str(PROJECT_ROOT))
 
 from museum_cosense_bot.config import load_environment
 from museum_cosense_bot.cosense_client import CosenseClient
+from museum_cosense_bot.cosense_cookie import resolve_cosense_connect_sid
 
 
 def main() -> None:
     load_environment()
 
     project = _required_env("COSENSE_PROJECT")
-    connect_sid = _required_env("COSENSE_CONNECT_SID")
+    connect_sid = resolve_cosense_connect_sid()
 
-    client = CosenseClient(project=project, connect_sid=connect_sid)
+    client = CosenseClient(project=project, connect_sid=connect_sid.value)
     print(f"Cosense project: {project}")
-    print(f"COSENSE_CONNECT_SID: {_mask_secret(connect_sid)}")
+    print(f"COSENSE_CONNECT_SID source: {connect_sid.source}")
+    print(f"COSENSE_CONNECT_SID: {_mask_secret(connect_sid.value)}")
     print("Checking Cosense login session...")
     client.validate_session()
     print("Cosense login session: OK")
