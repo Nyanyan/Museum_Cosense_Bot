@@ -7,6 +7,10 @@ from urllib.parse import quote
 import requests
 
 
+class CosenseAuthError(RuntimeError):
+    pass
+
+
 class CosenseClient:
     def __init__(self, project: str, connect_sid: str) -> None:
         self.project = project
@@ -19,15 +23,28 @@ class CosenseClient:
             path="/",
         )
 
-    def get_csrf_token(self) -> str:
+    def validate_session(self) -> None:
+        user = self.get_user_me()
+        if user.get("isGuest") is True:
+            raise CosenseAuthError(
+                "Cosense login session is not valid. "
+                "Please set a fresh logged-in connect.sid in COSENSE_CONNECT_SID."
+            )
+
+    def get_user_me(self) -> dict[str, Any]:
         response = self.session.get("https://scrapbox.io/api/users/me", timeout=30)
         self._raise_for_status(response)
-
         data = response.json()
+        if not isinstance(data, dict):
+            raise RuntimeError("Cosense /api/users/me response was not a JSON object")
+        return data
+
+    def get_csrf_token(self) -> str:
+        data = self.get_user_me()
         if data.get("isGuest") is True:
-            raise RuntimeError(
+            raise CosenseAuthError(
                 "Cosense login session is not valid. "
-                "Please set a fresh logged-in connect.sid cookie."
+                "Please set a fresh logged-in connect.sid in COSENSE_CONNECT_SID."
             )
 
         csrf_token = data.get("csrfToken")
@@ -196,12 +213,18 @@ class CosenseClient:
             "Referer": f"https://scrapbox.io/{self.project}",
         }
 
-    @staticmethod
-    def _raise_for_status(response: requests.Response) -> None:
+    def _raise_for_status(self, response: requests.Response) -> None:
         try:
             response.raise_for_status()
         except requests.HTTPError as error:
             body = response.text
+            if response.status_code == 401 and "scrapbox.io" in response.url:
+                raise CosenseAuthError(
+                    "Cosense rejected the login session with HTTP 401. "
+                    "Update COSENSE_CONNECT_SID in .env with a fresh logged-in "
+                    "connect.sid cookie from scrapbox.io, then restart the bot. "
+                    f"Project={self.project!r}. Response body: {body}"
+                ) from error
             raise RuntimeError(
                 f"HTTP error {response.status_code}: {body}"
             ) from error

@@ -1,14 +1,23 @@
-# Cosense Sample
+# Cosense Samples
 
-PythonからCosenseにサンプルページを1つ作成し、`sample.jpg` もGyazo経由で本文に添付します。
+Samples for posting to Cosense from Python.
 
-## 実行
+## Check Session
 
-リポジトリ直下で実行します。
+Use this first when Cosense returns `HTTP 401` or `NotLoggedInError`.
+
+```bash
+python samples/cosense/check_session.py
+```
+
+If this fails, refresh `COSENSE_CONNECT_SID` from a logged-in browser session on `scrapbox.io`, update `.env`, and restart the bot.
+
+## Post Sample Page
+
+This posts a sample page and uploads `sample.jpg` through Gyazo.
 
 ```bash
 python samples/cosense/post_sample.py
 ```
 
-Cosenseの設定画面でGyazo OAuth Uploadを接続しておいてください。
-Gyazoのアクセストークンは `.env` には書かず、`connect.sid` を使ってCosenseから取得します。
+Gyazo OAuth Upload must be connected in Cosense settings. The Gyazo access token is not stored in `.env`; it is fetched from Cosense using `connect.sid`.

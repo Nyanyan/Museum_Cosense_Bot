@@ -1,8 +1,8 @@
 # Museum Cosense Bot
 
-Slackのpublicチャンネルに投稿された内容を、人間の確認ボタンを挟んでCosenseへ投稿するPython Botです。
+A Python bot that receives new posts from a configured public Slack channel, asks for human approval in the Slack thread, and then posts the approved content to Cosense.
 
-## セットアップ
+## Setup
 
 ```bash
 python -m venv .venv
@@ -10,14 +10,14 @@ python -m venv .venv
 pip install -r requirements.txt
 ```
 
-`.env.example` を `.env` にコピーして、実際の値を設定します。
+Copy `.env.example` to `.env` and set real values.
 
 ```bash
 copy .env.example .env
 ```
 
-`COSENSE_CONNECT_SID`, `SLACK_BOT_TOKEN`, `SLACK_APP_TOKEN` は機密情報です。Gitにコミットしないでください。
-Slackチャンネル名やチャンネルIDも `.env.example` には入れず、ローカルの `.env` にだけ入れてください。
+Do not commit `COSENSE_CONNECT_SID`, `SLACK_BOT_TOKEN`, or `SLACK_APP_TOKEN`.
+Keep real Slack channel names and channel IDs only in your local `.env`.
 
 ## .env
 
@@ -33,17 +33,17 @@ SLACK_HISTORY_LIMIT=5
 SLACK_IMAGE_DOWNLOAD_DIR=data/slack-downloads
 ```
 
-`.env` は以下の順に読み込まれます。同じキーが複数にある場合は、先に読まれた値が使われます。
+`.env` files are loaded in this order. Earlier values win when the same key exists in multiple files.
 
-1. ルートの `.env`
+1. Root `.env`
 2. `museum_cosense_bot/.env`
 3. `cosense-sample/.env`
 
-基本的にはルートの `.env` を使ってください。
+Use the root `.env` for normal operation.
 
-## Slack App設定
+## Slack App Settings
 
-今回はpublicチャンネル用なので、privateチャンネル向けの `groups:*` 権限は不要です。
+This project targets a public channel, so private-channel `groups:*` scopes are not required.
 
 Bot Token Scopes:
 
@@ -56,62 +56,66 @@ App-Level Token Scope:
 
 - `connections:write`
 
-Event SubscriptionsのBot Event:
+Event Subscriptions Bot Event:
 
 - `message.channels`
 
-その他に必要な設定:
+Also required:
 
-- Socket ModeをOnにする
-- Interactivity & ShortcutsをOnにする
-- 権限やイベントを変えた後にSlack AppをReinstallする
-- 対象チャンネルで `/invite @your-bot-name` してBotを招待する
+- Enable Socket Mode.
+- Enable Interactivity & Shortcuts.
+- Reinstall the Slack App after changing scopes or events.
+- Invite the bot to the target channel with `/invite @your-bot-name`.
 
-## 本番Botの実行
+## Run Production Bot
 
 ```bash
 python run_bot.py
 ```
 
-処理の流れ:
+Flow:
 
-1. `SLACK_CHANNEL_ID` の新規投稿を受信する
-2. 1行目をCosenseページタイトルにする
-3. 2行目以降を本文にする
-4. 元投稿のスレッドに確認メッセージと `Post to Cosense` ボタンを投稿する
-5. ボタンが押されたら、添付画像をSlackから取得してGyazoへアップロードする
-6. Cosenseへ投稿する
-7. 同じタイトルのCosenseページが既にあれば、末尾に `----------` を入れて追記する
+1. Receive new posts from `SLACK_CHANNEL_ID`.
+2. Use the first line as the Cosense page title.
+3. Use the second and later lines as the body.
+4. Reply in the original Slack thread with a review message and a `Post to Cosense` button.
+5. When the button is clicked, download attached images from Slack and upload them to Gyazo.
+6. Post the content to Cosense.
+7. If a Cosense page with the same title already exists, append `----------` and then append the new content.
 
-Bot自身の投稿、スレッド返信、1行目が空の投稿は無視します。
+The bot ignores its own posts, thread replies, and posts with an empty first line.
 
-## デバッグ
+## Debugging
 
-最新投稿の取得だけを確認する場合:
+Check Slack channel history access:
 
 ```bash
 python samples/slack/read_slack_sample.py
 ```
 
-Socket ModeでSlackイベントが届いているか確認する場合:
+Check whether Slack Socket Mode events arrive:
 
 ```bash
 python samples/slack/debug_socket_mode.py
 ```
 
-`debug_socket_mode.py` が `connected` と表示した後、対象Slackチャンネルに新規投稿してください。
+Check whether `COSENSE_CONNECT_SID` is still a valid logged-in Cosense session:
 
-`conversations.history` は成功するのに `[socket] received` が出ない場合、Bot TokenではなくSlack App側のSocket Mode/Event Subscriptions設定が原因の可能性が高いです。
+```bash
+python samples/cosense/check_session.py
+```
 
-## サンプル
+If Slack works but Cosense returns `HTTP 401` or `NotLoggedInError`, refresh `COSENSE_CONNECT_SID` from a logged-in browser session on `scrapbox.io`, update `.env`, and restart the bot. The cookie can expire or become invalid after logout.
 
-Cosense投稿サンプル:
+## Samples
+
+Cosense post sample:
 
 ```bash
 python samples/cosense/post_sample.py
 ```
 
-Slack読み取りサンプル:
+Slack read sample:
 
 ```bash
 python samples/slack/read_slack_sample.py

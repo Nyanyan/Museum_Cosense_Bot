@@ -14,7 +14,7 @@ from museum_cosense_bot.config import (
     load_environment,
     project_root,
 )
-from museum_cosense_bot.cosense_client import CosenseClient
+from museum_cosense_bot.cosense_client import CosenseAuthError, CosenseClient
 from museum_cosense_bot.slack_client import POST_TO_COSENSE_ACTION_ID, SlackClient
 from museum_cosense_bot.slack_post import SlackCosensePost
 
@@ -60,6 +60,9 @@ def create_app(config: BotConfig) -> App:
         project=config.cosense_project,
         connect_sid=config.cosense_connect_sid,
     )
+    print("[cosense] validating login session", flush=True)
+    cosense.validate_session()
+    print("[cosense] login session ok", flush=True)
     seen_event_ids: set[str] = set()
 
     @app.event("message")
@@ -199,7 +202,11 @@ def create_app(config: BotConfig) -> App:
 def main() -> None:
     config = BotConfig.from_env()
     _print_startup_diagnostics(config)
-    app = create_app(config)
+    try:
+        app = create_app(config)
+    except CosenseAuthError as error:
+        print(f"[cosense] startup validation failed: {error}", flush=True)
+        raise
     print(
         f"Listening for Slack messages in "
         f"#{config.slack_channel_name} ({config.slack_channel_id})",
@@ -253,6 +260,7 @@ def _print_startup_diagnostics(config: BotConfig) -> None:
     for path in [PROJECT_ROOT / ".env", PACKAGE_ENV_PATH, LEGACY_ENV_PATH]:
         print(f"[config] - {path} exists={path.exists()}", flush=True)
     print(f"[config] COSENSE_PROJECT={config.cosense_project}", flush=True)
+    print(f"[config] COSENSE_CONNECT_SID={_mask_secret(config.cosense_connect_sid)}", flush=True)
     print(f"[config] SLACK_CHANNEL_NAME={config.slack_channel_name}", flush=True)
     print(f"[config] SLACK_CHANNEL_ID={config.slack_channel_id}", flush=True)
     print(f"[config] SLACK_IMAGE_DOWNLOAD_DIR={config.image_download_dir}", flush=True)
