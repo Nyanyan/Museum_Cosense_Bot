@@ -89,9 +89,9 @@ class CosenseClient:
 
     def append_or_create_page(self, title: str, body_lines: list[str]) -> str:
         existing_lines = self.get_page_lines(title)
-        if existing_lines is not None:
+        if self._has_existing_body(title, existing_lines):
             lines = [
-                *self._ensure_title_line(title, existing_lines),
+                *self._ensure_title_line(title, existing_lines or []),
                 "----------",
                 *body_lines,
             ]
@@ -204,6 +204,14 @@ class CosenseClient:
                     return cookie_value.strip()
 
         return value
+
+    @staticmethod
+    def _has_existing_body(title: str, lines: list[str] | None) -> bool:
+        if not lines:
+            return False
+
+        page_lines = CosenseClient._ensure_title_line(title, lines)
+        return any(line.strip() for line in page_lines[1:])
 
     @staticmethod
     def _ensure_title_line(title: str, lines: list[str]) -> list[str]:
