@@ -25,12 +25,21 @@ class BackgroundImageDownloads:
         self.lock = Lock()
         self.futures: dict[PostKey, Future[list[SlackImage]]] = {}
 
-    def start(self, key: PostKey, message: dict[str, Any], image_count: int) -> None:
+    def start(
+        self,
+        key: PostKey,
+        message: dict[str, Any],
+        image_count: int,
+        replace: bool = False,
+    ) -> None:
         if image_count < 1:
+            if replace:
+                with self.lock:
+                    self.futures.pop(key, None)
             return
 
         with self.lock:
-            if key in self.futures:
+            if key in self.futures and not replace:
                 return
             self.futures[key] = self.executor.submit(self._download, key, message)
 

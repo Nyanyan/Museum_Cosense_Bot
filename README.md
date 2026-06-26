@@ -91,14 +91,15 @@ Flow:
 1. Receive new posts from `SLACK_CHANNEL_ID`.
 2. Use the first line as the Cosense page title.
 3. Use the second and later lines as the body.
-4. Reply in the original Slack thread with a review message and a `Post to Cosense` button.
+4. Reply in the original Slack thread with a review message, a `Post to Cosense` button, and a `Reload` button.
 5. Attached images are downloaded from Slack in the background after the review message is posted.
-6. When the button is clicked, the review message is kept but the button is removed and a status line is shown.
-7. Upload downloaded images to Gyazo.
-8. Post the content to Cosense.
-9. If a Cosense page with the same title already exists, keep the existing lines, append `----------`, and then append the new content.
+6. When either button is clicked, the review message is kept but both buttons are removed and a status line is shown.
+7. If `Reload` is clicked, fetch the latest version of the Slack post and reply with a new review message.
+8. If `Post to Cosense` is clicked, upload downloaded images to Gyazo.
+9. Post the content to Cosense.
+10. If a Cosense page with the same title already exists, keep the existing lines, append `----------`, and then append the new content.
 
-The bot ignores its own posts, thread replies, and posts with an empty first line. Button clicks are accepted only once per Slack post while the bot process is running.
+The bot ignores its own posts, thread replies, and posts with an empty first line. Each review message accepts only one button click. `Post to Cosense` clicks are accepted only once per Slack post while the bot process is running.
 
 ## Debugging
 

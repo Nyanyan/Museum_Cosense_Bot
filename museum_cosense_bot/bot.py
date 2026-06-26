@@ -18,7 +18,11 @@ from museum_cosense_bot.config import (
 from museum_cosense_bot.cosense_client import CosenseAuthError, CosenseClient
 from museum_cosense_bot.cosense_cookie import resolve_cosense_connect_sid
 from museum_cosense_bot.image_downloads import BackgroundImageDownloads, PostKey
-from museum_cosense_bot.slack_client import POST_TO_COSENSE_ACTION_ID, SlackClient
+from museum_cosense_bot.slack_client import (
+    POST_TO_COSENSE_ACTION_ID,
+    RELOAD_REVIEW_ACTION_ID,
+    SlackClient,
+)
 from museum_cosense_bot.slack_post import SlackCosensePost
 
 
@@ -87,6 +91,7 @@ def create_app(config: BotConfig) -> App:
     state_lock = Lock()
     seen_event_ids: set[str] = set()
     accepted_post_keys: set[PostKey] = set()
+    handled_review_message_keys: set[PostKey] = set()
     review_states: dict[PostKey, ReviewState] = {}
     title_locks: dict[str, Lock] = {}
 
@@ -99,6 +104,13 @@ def create_app(config: BotConfig) -> App:
             if key in accepted_post_keys:
                 return False
             accepted_post_keys.add(key)
+            return True
+
+    def claim_review_message(key: PostKey) -> bool:
+        with state_lock:
+            if key in handled_review_message_keys:
+                return False
+            handled_review_message_keys.add(key)
             return True
 
     def remember_review(key: PostKey, state: ReviewState) -> None:
@@ -116,6 +128,39 @@ def create_app(config: BotConfig) -> App:
                 title_lock = Lock()
                 title_locks[title] = title_lock
             return title_lock
+
+    def post_review_for_post(
+        channel_id: str,
+        message: dict[str, Any],
+        post: SlackCosensePost,
+        replace_image_download: bool = False,
+    ) -> ReviewState:
+        review_response = slack.post_review_request(
+            channel_id=channel_id,
+            thread_ts=post.message_ts,
+            title=post.title,
+            body_lines=post.body_lines,
+            image_count=post.image_count,
+        )
+        review_message_ts = str(review_response.get("ts") or "")
+        key = _post_key(channel_id, post.message_ts)
+        state = ReviewState(
+            post=post,
+            review_message_ts=review_message_ts,
+        )
+        remember_review(key, state)
+        image_downloads.start(
+            key=key,
+            message=message,
+            image_count=post.image_count,
+            replace=replace_image_download,
+        )
+        print(
+            f"[slack:review] posted review buttons in thread_ts={post.message_ts}, "
+            f"review_ts={review_message_ts}",
+            flush=True,
+        )
+        return state
 
     @app.event("message")
     def handle_message_event(
@@ -152,31 +197,10 @@ def create_app(config: BotConfig) -> App:
             f"images={post.image_count}",
             flush=True,
         )
-        review_response = slack.post_review_request(
+        post_review_for_post(
             channel_id=config.slack_channel_id,
-            thread_ts=post.message_ts,
-            title=post.title,
-            body_lines=post.body_lines,
-            image_count=post.image_count,
-        )
-        review_message_ts = str(review_response.get("ts") or "")
-        key = _post_key(config.slack_channel_id, post.message_ts)
-        remember_review(
-            key,
-            ReviewState(
-                post=post,
-                review_message_ts=review_message_ts,
-            ),
-        )
-        image_downloads.start(
-            key=key,
             message=event,
-            image_count=post.image_count,
-        )
-        print(
-            f"[slack:event] posted review button in thread_ts={post.message_ts}, "
-            f"review_ts={review_message_ts}",
-            flush=True,
+            post=post,
         )
 
     @app.action(POST_TO_COSENSE_ACTION_ID)
@@ -193,9 +217,9 @@ def create_app(config: BotConfig) -> App:
         review_message_ts = str(body["message"]["ts"])
         user_id = body.get("user", {}).get("id", "unknown")
         key = _post_key(channel_id, message_ts)
+        review_key = _post_key(channel_id, review_message_ts)
         state = get_review_state(key)
         post = state.post if state else None
-        status_updated = False
 
         print(
             "[slack:action] Post to Cosense clicked: "
@@ -204,10 +228,10 @@ def create_app(config: BotConfig) -> App:
             flush=True,
         )
 
-        if not claim_post(key):
+        if not claim_review_message(review_key):
             print(
-                f"[slack:action] duplicate click ignored: "
-                f"channel={channel_id}, message_ts={message_ts}",
+                "[slack:action] duplicate review action ignored: "
+                f"channel={channel_id}, review_message_ts={review_message_ts}",
                 flush=True,
             )
             return
@@ -220,7 +244,37 @@ def create_app(config: BotConfig) -> App:
                 post=post,
                 status_text="Posting to Cosense...",
             )
-            status_updated = True
+        else:
+            _clear_review_buttons(
+                slack=slack,
+                channel_id=channel_id,
+                review_message_ts=review_message_ts,
+                status_text="Posting to Cosense...",
+            )
+
+        if not claim_post(key):
+            print(
+                "[slack:action] duplicate post ignored: "
+                f"channel={channel_id}, message_ts={message_ts}",
+                flush=True,
+            )
+            status_text = "Already posting or posted to Cosense."
+            if post is not None:
+                _update_review_status(
+                    slack=slack,
+                    channel_id=channel_id,
+                    review_message_ts=review_message_ts,
+                    post=post,
+                    status_text=status_text,
+                )
+            else:
+                _clear_review_buttons(
+                    slack=slack,
+                    channel_id=channel_id,
+                    review_message_ts=review_message_ts,
+                    status_text=status_text,
+                )
+            return
 
         try:
             print("[cosense] fetching original Slack message", flush=True)
@@ -232,15 +286,20 @@ def create_app(config: BotConfig) -> App:
                 channel_id=channel_id,
                 message=message,
             )
-            if not status_updated:
-                _update_review_status(
-                    slack=slack,
-                    channel_id=channel_id,
-                    review_message_ts=review_message_ts,
+            remember_review(
+                key,
+                ReviewState(
                     post=post,
-                    status_text="Posting to Cosense...",
-                )
-                status_updated = True
+                    review_message_ts=review_message_ts,
+                ),
+            )
+            _update_review_status(
+                slack=slack,
+                channel_id=channel_id,
+                review_message_ts=review_message_ts,
+                post=post,
+                status_text="Posting to Cosense...",
+            )
 
             print(
                 "[cosense] parsed Slack post: "
@@ -280,11 +339,11 @@ def create_app(config: BotConfig) -> App:
                     status_text=_short_status(f"Failed to post to Cosense: {error}"),
                 )
             else:
-                slack.update_message(
+                _clear_review_buttons(
+                    slack=slack,
                     channel_id=channel_id,
-                    message_ts=review_message_ts,
-                    text=_short_status(f"Failed to post to Cosense: {error}"),
-                    blocks=[],
+                    review_message_ts=review_message_ts,
+                    status_text=f"Failed to post to Cosense: {error}",
                 )
             slack.post_message(
                 channel_id=channel_id,
@@ -306,6 +365,106 @@ def create_app(config: BotConfig) -> App:
             text=f"Posted to Cosense: {page_url}",
         )
 
+    @app.action(RELOAD_REVIEW_ACTION_ID)
+    def handle_reload_review(
+        ack: Any,
+        body: dict[str, Any],
+        logger: Any,
+    ) -> None:
+        ack()
+        action = body["actions"][0]
+        value = json.loads(action["value"])
+        channel_id = value["channel_id"]
+        message_ts = value["message_ts"]
+        review_message_ts = str(body["message"]["ts"])
+        user_id = body.get("user", {}).get("id", "unknown")
+        key = _post_key(channel_id, message_ts)
+        review_key = _post_key(channel_id, review_message_ts)
+        state = get_review_state(key)
+        post = state.post if state else None
+
+        print(
+            "[slack:action] Reload clicked: "
+            f"user={user_id}, channel={channel_id}, "
+            f"message_ts={message_ts}, review_message_ts={review_message_ts}",
+            flush=True,
+        )
+
+        if not claim_review_message(review_key):
+            print(
+                "[slack:action] duplicate review action ignored: "
+                f"channel={channel_id}, review_message_ts={review_message_ts}",
+                flush=True,
+            )
+            return
+
+        if post is not None:
+            _update_review_status(
+                slack=slack,
+                channel_id=channel_id,
+                review_message_ts=review_message_ts,
+                post=post,
+                status_text="Reloading from Slack...",
+            )
+        else:
+            _clear_review_buttons(
+                slack=slack,
+                channel_id=channel_id,
+                review_message_ts=review_message_ts,
+                status_text="Reloading from Slack...",
+            )
+
+        try:
+            print("[slack:action] reloading original Slack message", flush=True)
+            message = slack.fetch_message(
+                channel_id=channel_id,
+                message_ts=message_ts,
+            )
+            post = SlackCosensePost.from_message(
+                channel_id=channel_id,
+                message=message,
+            )
+            new_state = post_review_for_post(
+                channel_id=channel_id,
+                message=message,
+                post=post,
+                replace_image_download=True,
+            )
+            _update_review_status(
+                slack=slack,
+                channel_id=channel_id,
+                review_message_ts=review_message_ts,
+                post=post,
+                status_text="Reloaded from Slack. Use the newest draft reply.",
+            )
+            print(
+                "[slack:action] reloaded review posted: "
+                f"message_ts={message_ts}, review_ts={new_state.review_message_ts}",
+                flush=True,
+            )
+        except Exception as error:
+            logger.exception("Failed to reload Slack message for Cosense review")
+            print(f"[slack:action] reload failed: {error}", flush=True)
+            if post is not None:
+                _update_review_status(
+                    slack=slack,
+                    channel_id=channel_id,
+                    review_message_ts=review_message_ts,
+                    post=post,
+                    status_text=_short_status(f"Failed to reload: {error}"),
+                )
+            else:
+                _clear_review_buttons(
+                    slack=slack,
+                    channel_id=channel_id,
+                    review_message_ts=review_message_ts,
+                    status_text=f"Failed to reload: {error}",
+                )
+            slack.post_message(
+                channel_id=channel_id,
+                thread_ts=message_ts,
+                text=_short_status(f"Failed to reload Cosense draft: {error}"),
+            )
     return app
 
 
@@ -341,6 +500,20 @@ def _update_review_status(
         body_lines=post.body_lines,
         image_count=post.image_count,
         status_text=_short_status(status_text),
+    )
+
+
+def _clear_review_buttons(
+    slack: SlackClient,
+    channel_id: str,
+    review_message_ts: str,
+    status_text: str,
+) -> None:
+    slack.update_message(
+        channel_id=channel_id,
+        message_ts=review_message_ts,
+        text=_short_status(status_text),
+        blocks=[],
     )
 
 

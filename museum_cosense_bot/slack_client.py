@@ -9,6 +9,7 @@ import requests
 
 
 POST_TO_COSENSE_ACTION_ID = "post_to_cosense"
+RELOAD_REVIEW_ACTION_ID = "reload_review"
 
 
 @dataclass(frozen=True)
@@ -94,7 +95,7 @@ class SlackClient:
                 body_lines=body_lines,
                 image_count=image_count,
                 status_text=None,
-                button_enabled=True,
+                buttons_enabled=True,
             ),
         )
 
@@ -119,7 +120,7 @@ class SlackClient:
                 body_lines=body_lines,
                 image_count=image_count,
                 status_text=status_text,
-                button_enabled=False,
+                buttons_enabled=False,
             ),
         )
 
@@ -179,7 +180,7 @@ class SlackClient:
         body_lines: list[str],
         image_count: int,
         status_text: str | None,
-        button_enabled: bool,
+        buttons_enabled: bool,
     ) -> list[dict[str, Any]]:
         body_preview = "\n".join(body_lines).strip() or "(no body)"
         if len(body_preview) > 1800:
@@ -211,7 +212,14 @@ class SlackClient:
                     ],
                 }
             )
-        if button_enabled:
+        if buttons_enabled:
+            button_value = json.dumps(
+                {
+                    "channel_id": channel_id,
+                    "message_ts": message_ts,
+                },
+                ensure_ascii=False,
+            )
             blocks.append(
                 {
                     "type": "actions",
@@ -224,14 +232,17 @@ class SlackClient:
                             },
                             "style": "primary",
                             "action_id": POST_TO_COSENSE_ACTION_ID,
-                            "value": json.dumps(
-                                {
-                                    "channel_id": channel_id,
-                                    "message_ts": message_ts,
-                                },
-                                ensure_ascii=False,
-                            ),
-                        }
+                            "value": button_value,
+                        },
+                        {
+                            "type": "button",
+                            "text": {
+                                "type": "plain_text",
+                                "text": "Reload",
+                            },
+                            "action_id": RELOAD_REVIEW_ACTION_ID,
+                            "value": button_value,
+                        },
                     ],
                 }
             )
